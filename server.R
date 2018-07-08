@@ -9,17 +9,16 @@ library(ggplot2)
 library(ggthemes)
 library(GGally)
 library(scales)
+library(corrplot)
 library(quantmod)
-library(highcharter)
 library(dplyr)
 library(reshape2)
 library(lubridate)
+library(tidyquant)
 library(cowplot)
 library(zoo)
 library(plyr)
-library(tidytext)
-library(purrr)
-library(tm.plugin.webmining)
+
 #library(rsconnect) # activate line to load library
 #rsconnect::deployApp('C:/Users/Court/Documents/Projects/Stock_App') # activate line to deploy update
 
@@ -37,7 +36,7 @@ shinyServer(function(input, output, session) {
   
   # create a list object that has all the adjusted prices
   prices_list = lapply(symbols, function(pri) {
-    Ad(getSymbols(pri, from=StartDate, auto.assign=FALSE))
+    Ad(getSymbols(pri, from=input$StartDate, auto.assign=FALSE))
   })
   
   # convert the list object into a workable xts object with all the adjusted prices
@@ -59,13 +58,13 @@ shinyServer(function(input, output, session) {
     prices <- prices()
     
     req(input$date)
-    validate(need(!is.na(input$date[1]) & !is.na(input$date[2]),
+    validate(need(!is.na(input$StartDate) & !is.na(input$EndDate),
                   "Error: Please provide both a start and an end date."))
-    validate(need(input$date[1] < input$date[2], 
+    validate(need(input$StartDate < input$EndDate, 
                   "Error: Start date should be earlier than end date."))
     prices %>%
       filter(
-        date > as.POSIXct(input$date[1]) & date < as.POSIXct(input$date[2])
+        date > as.POSIXct(input$StartDate) & date < as.POSIXct(input$EndDate)
       )
   })
 
@@ -93,7 +92,7 @@ plt_prices
     
     # create a list object that has all the adjusted prices
     returns_list = lapply(symbols, function(sym) {
-      dailyReturn(na.omit(getSymbols(sym, from=StartDate,
+      dailyReturn(na.omit(getSymbols(sym, from=input$StartDate,
                                     auto.assign=FALSE)),
                  type = 'log')
     })
@@ -118,13 +117,13 @@ plt_prices
     returns <- returns()
     
     req(input$date)
-    validate(need(!is.na(input$date[1]) & !is.na(input$date[2]),
+    validate(need(!is.na(input$StartDate) & !is.na(input$EndDate),
                   "Error: Please provide both a start and an end date."))
-    validate(need(input$date[1] < input$date[2], 
+    validate(need(input$StartDate < input$EndDate, 
                   "Error: Start date should be earlier than end date."))
     returns %>%
       filter(
-        date > as.POSIXct(input$date[1]) & date < as.POSIXct(input$date[2])
+        date > as.POSIXct(input$StartDate) & date < as.POSIXct(input$EndDate)
       )
   })
     
@@ -144,12 +143,60 @@ output$fv <- renderPlot({
   fv
 })  
 
+#
+#
+#
+corr <- eventReactive(input$go, {
+  symbols <- c(input$s1,input$s2,input$s3)
+  
+  # create a list object that has all the adjusted prices
+  returns_list = lapply(symbols, function(sym) {
+    dailyReturn(na.omit(getSymbols(sym, from=input$StartDate,
+                                   auto.assign=FALSE)),
+                type = 'log')
+  })
+  
+  # convert the list object into a workable xts object with all the adjusted prices
+  returns_xts = do.call(merge, returns_list)
+  
+  # rename columns using the 'symbols' list
+  colnames(returns_xts) = symbols
+  
+  returns_xts <- returns_xts[complete.cases(returns_xts),]
+  
+})
 
+selected_data = eventReactive(input$go, {
+  
+  corr <- corr()
+  
+  req(input$date)
+  validate(need(!is.na(input$StartDate) & !is.na(input$EndDate),
+                "Error: Please provide both a start and an end date."))
+  validate(need(input$StartDate < input$Endate, 
+                "Error: Start date should be earlier than end date."))
+  corr %>%
+    filter(
+      date > as.POSIXct(input$StartDate) & date < as.POSIXct(input$EndDate)
+    )
+})
+
+output$corr <- renderPlot({
+  my_fn <- function(data, mapping, ...){
+    p <- ggplot(data = data, mapping = mapping) + 
+      geom_point() + 
+      geom_smooth(method=loess, fill="red", color="red", ...) +
+      geom_smooth(method=lm, fill="blue", color="blue", ...)
+    p
+  }
+  
+  ggpairs(corr(), columns = 2:4,
+                  lower = list(continuous = my_fn))
+  
+
+})
 })
 
 #VIX <- as.xts(na.omit(getSymbols("^VIX",from=StartDate,auto.assign=FALSE)))
 #SP500_Price <- as.xts(na.omit(getSymbols("^GSPC",from=StartDate,auto.assign=FALSE)))
 #SP500 <- as.xts(dailyReturn(na.omit(getSymbols("^GSPC",from=StartDate,auto.assign=FALSE))),type='log')
-#r1 <- as.xts(dailyReturn(na.omit(getSymbols(s1,from=StartDate,auto.assign=FALSE))),type='log')
-#r2 <- as.xts(dailyReturn(na.omit(getSymbols(s2,from=StartDate,auto.assign=FALSE))),type='log')
-#r3 <- as.xts(dailyReturn(na.omit(getSymbols(s3,from=StartDate,auto.assign=FALSE))),type='log')
