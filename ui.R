@@ -214,6 +214,18 @@ tabPanel(
         )
       )
     ),
+    fluidRow(column(
+      width = 6,
+      helpText('Input # of simuations')
+    ),
+    column(
+      width = 4,
+      numericInput(
+        inputId = 'sim_cnt', label = 'Sims',
+        value = 100, min = 1, max = 1000, step = 1
+      )
+    )
+    ),
           # Select date range to be plotted
           dateRangeInput(
             "date3",
@@ -251,6 +263,7 @@ tabPanel(
           href="https://www.researchgate.net/publication/290441536_Stochastic_Processes_for_the_Risk_Management",
           "More on the variation of the GBM used in this app can be found here.", target = "_blank"
         ),
+        plotOutput(outputId = 'sim_hist'),
           width = 9
           )
       )),
@@ -277,6 +290,8 @@ tabPanel(
       p(
         'For more information about this app please contact me at:
         courtneywilliams561@gmail.com'
-      )
+      ),
+      h4('Source Code on GitHub'),tags$a(href='https://github.com/kwame561/Analytics',
+                                         "Jump to GitHub repository.", target = "_blank")
       )
 )
