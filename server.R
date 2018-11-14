@@ -22,9 +22,9 @@ library(kableExtra)
 library(readxl)
 library(tidytext)
 library(tidyr)
-library(purrr)
-library(tm)
-library(tm.plugin.webmining)
+#library(purrr)
+#library(tm)
+#library(tm.plugin.webmining)
 library(plotly)
 
 #library(rsconnect) # activate line to load library
@@ -531,19 +531,6 @@ output$port_sim <- renderPlotly({
     a = a + 1
   }
   
-  withProgress(message = 'Simulating Portfolio', value = 0, {
-    # Number of times we'll go through the loop
-    n <- length(Portfolio)
-    
-    for (i in 1:n) {
-      # Increment the progress bar, and update the detail text.
-      incProgress(1/n, detail = paste("Doing part", i, 'of',n))
-      
-      # Pause for 0.1 seconds to simulate a long computation.
-      Sys.sleep(0.1)
-    }
-  })
-  
   for(i in theta_bm) {
     S_bm = s_bm*(1 + mu_bm/obs + sd_bm/sqrt(obs)*i)
     Benchmark[a_bm] <- S_bm                        
@@ -551,23 +538,10 @@ output$port_sim <- renderPlotly({
     a_bm = a_bm + 1
   }
   
-  withProgress(message = 'Simulating Benchmark', value = 0, {
-    # Number of times we'll go through the loop
-    n <- length(Benchmark)
-    
-    for (i in 1:n) {
-      # Increment the progress bar, and update the detail text.
-      incProgress(1/n, detail = paste("Doing part", i, 'of',n))
-      
-      # Pause for 0.1 seconds to simulate a long computation.
-      Sys.sleep(0.1)
-    }
-  })
-  
   df <- data.frame(time,Portfolio,Benchmark)
   dfm <- reshape2::melt(df, id.vars = 'time', variable.name = 'Security')
   
-  withProgress(message = 'Plot Simulations', value = 0, {
+  withProgress(message = 'Generate Plots', value = 0, {
     # Number of times we'll go through the loop
     n <- length(dfm)
     
@@ -595,6 +569,105 @@ output$port_sim <- renderPlotly({
   ) %>% config(displayModeBar = FALSE) %>% layout(showlegend = FALSE)
 
 })
+
+output$sim_hist <- renderPlot({
+  # Portfolio simulation
+  port <- port()
+  
+  gret <- 1 + port #calculating gross returns
+  gret = gret[complete.cases(gret), ] # removes all NA's which may reduce the time window
+  n <- nrow(gret)
+  fv_gret <- cumprod(gret) * input$invest
+  fv_gret_df = data.frame(date = index(fv_gret), coredata(fv_gret))
+  
+  #-----------
+  ## Setup Simulation
+  #-----------
+  port_sim <- function(x) {
+    obs <- x
+    theta <-
+      rnorm(obs, 0, 1)   # normally distributed random terms, mean = 0, stdv = 1
+    mu <-
+      mean(port[, 'Portfolio'])              # expected daily return of portfolio
+    sd <-
+      sd(port[, 'Portfolio'])             # expected annual standard deviation of portfolio
+    s <- input$invest              # starting value/price
+    Portfolio <- c(s)         # Price vector
+    a <- 2                # index used below
+    
+    for (i in theta) {
+      S = s * (1 + mu / obs + sd / sqrt(obs) * i)
+      Portfolio[a] <- S
+      s = S
+      a = a + 1
+    }
+    return(Portfolio)
+  }
+    
+  sim1 <- replicate(input$sim_cnt, port_sim(input$sim_days), simplify = "array")
+  
+  withProgress(message = 'Simulating Portfolio', value = 0, {
+    # Number of times we'll go through the loop
+    n <- nrow(sim1)
+    
+    for (i in 1:n) {
+      # Increment the progress bar, and update the detail text.
+      incProgress(1/n, detail = paste("Doing part", i, 'of',n))
+      
+      # Pause for 0.1 seconds to simulate a long computation.
+      Sys.sleep(0.1)
+    }
+  })
+  
+  p1 <- qplot(sim1[input$sim_days,], geom = 'histogram', fill=I("#FF9999"), 
+        col=I("#000099")) + 
+    scale_x_continuous(labels = scales::dollar) + 
+    labs(title = paste('The expected value by day',input$sim_days,'is',scales::dollar(mean(sim1[input$sim_days,]))), x = '', y = 'Frequency')
+  
+  # Benchmark simulation
+  bench_sim <- function(x) {
+  obs <- input$sim_days
+  theta_bm <- rnorm(obs,0,1)   # normally distributed random terms, mean = 0, stdv = 1
+  mu_bm <- mean(port[,'Benchmark'])              # expected daily return of benchmark
+  sd_bm <- sd(port[,'Benchmark'])             # Expected annual standard deviation of benchmark
+  s_bm <- input$invest              # starting value/price
+  Benchmark <- c(s_bm)         # Price vector
+  a_bm <- 2
+  
+  for(i in theta_bm) {
+    S_bm = s_bm*(1 + mu_bm/obs + sd_bm/sqrt(obs)*i)
+    Benchmark[a_bm] <- S_bm                        
+    s_bm = S_bm                                 
+    a_bm = a_bm + 1
+  }
+  return(Benchmark)
+  }
+  
+  sim2 <- replicate(input$sim_cnt, bench_sim(input$sim_days), simplify = "array")
+  
+  withProgress(message = 'Simulating Benchmark', value = 0, {
+    # Number of times we'll go through the loop
+    n <- nrow(sim2)
+    
+    for (i in 1:n) {
+      # Increment the progress bar, and update the detail text.
+      incProgress(1/n, detail = paste("Doing part", i, 'of',n))
+      
+      # Pause for 0.1 seconds to simulate a long computation.
+      Sys.sleep(0.1)
+    }
+  })
+  
+  p2 <- qplot(sim2[input$sim_days,], geom = 'histogram', fill=I("turquoise3"), 
+              col=I("#FF9999")) + 
+    scale_x_continuous(labels = scales::dollar) + 
+    labs(title = paste('The expected value by day',input$sim_days,'is',scales::dollar(mean(sim2[input$sim_days,]))), x = '', y = 'Frequency')
+  
+  plot_grid(p1, p2, labels = c('Portfolio', 'Benchmark'))
+  
+})
+
+
 # Portfolio summary table
 output$portf_sum <- renderTable({
   # calulate average daily returns
@@ -633,11 +706,13 @@ output$portf_sum <- renderTable({
 })
 
 output$gbm <- renderUI({
-    p("The Geometric Brownian motion model in the simulation above uses as 
+    p(paste('The Geometric Brownian motion model in the simulation above uses as 
 constants the actual expected return and expected standard deviations, 
 representing the percent drift and percent volatility, respectively, for 
-the Portfolio and Benchmark. Remeber this endeavor is to illustrate 
-my comfort level with the R statiscal programming language.")
+the Portfolio and Benchmark. The distributions below shows the possible 
+outcomes at the end of the simulation period of',input$sim_days,'days. Remeber this endeavor is to illustrate 
+my comfort level with the R statiscal programming language
+      prepared solely for informational purposes.'))
 })
 
 #------------------------------------------------------------------------
